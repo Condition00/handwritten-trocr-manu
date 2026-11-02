@@ -1,4 +1,5 @@
 import io
+import json
 from pathlib import Path
 
 import jiwer
@@ -14,6 +15,7 @@ class IAMLineDataset(Dataset):
         frame = pd.read_parquet(parquet_path).iloc[start:end].reset_index(drop=True)
         self.images = frame["image"].tolist()
         self.texts = frame["text"].astype(str).tolist()
+        self.identifiers = frame.get("source_index", frame.index).tolist()
 
     def __len__(self): return len(self.texts)
 
@@ -32,10 +34,33 @@ def device():
 
 def load_trocr(model_name_or_path):
     target = device()
-    processor = TrOCRProcessor.from_pretrained(model_name_or_path)
+    processor_kwargs = {}
+    tokenizer_config = Path(model_name_or_path) / "tokenizer_config.json"
+    if tokenizer_config.is_file():
+        with tokenizer_config.open() as file:
+            extra_special_tokens = json.load(file).get("extra_special_tokens")
+        if isinstance(extra_special_tokens, list):
+            processor_kwargs["extra_special_tokens"] = {}
+    processor = TrOCRProcessor.from_pretrained(model_name_or_path, **processor_kwargs)
     model = VisionEncoderDecoderModel.from_pretrained(model_name_or_path)
-    model.config.decoder_start_token_id = processor.tokenizer.cls_token_id
-    model.config.pad_token_id = processor.tokenizer.pad_token_id
+    generation_config = model.generation_config
+    token_ids = {
+        "decoder_start_token_id": generation_config.decoder_start_token_id,
+        "eos_token_id": generation_config.eos_token_id,
+        "pad_token_id": generation_config.pad_token_id,
+    }
+    if any(value is None for value in token_ids.values()):
+        raise ValueError(f"Incomplete generation token configuration: {token_ids}")
+    if token_ids["eos_token_id"] != processor.tokenizer.eos_token_id:
+        raise ValueError(f"EOS token mismatch: {token_ids['eos_token_id']} != {processor.tokenizer.eos_token_id}")
+    if token_ids["pad_token_id"] != processor.tokenizer.pad_token_id:
+        raise ValueError(f"PAD token mismatch: {token_ids['pad_token_id']} != {processor.tokenizer.pad_token_id}")
+    model.config.decoder_start_token_id = token_ids["decoder_start_token_id"]
+    model.config.eos_token_id = token_ids["eos_token_id"]
+    model.config.pad_token_id = token_ids["pad_token_id"]
+    model.generation_config.decoder_start_token_id = token_ids["decoder_start_token_id"]
+    model.generation_config.eos_token_id = token_ids["eos_token_id"]
+    model.generation_config.pad_token_id = token_ids["pad_token_id"]
     return processor, model.to(target), target
 
 
@@ -59,3 +84,10 @@ def predict_dataset(model, processor, dataset, target_device):
 
 def cer_wer(refs, preds):
     return {"cer": float(jiwer.cer(refs, preds)), "wer": float(jiwer.wer(refs, preds))}
+
+
+def pair_metrics(reference, prediction):
+    return {
+        "cer": float(jiwer.cer(reference, prediction)),
+        "wer": float(jiwer.wer(reference, prediction)),
+    }

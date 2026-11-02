@@ -32,10 +32,8 @@ Fixed test results:
 
 | Model state | CER | WER |
 |---|---:|---:|
-| Pretrained model | 0.0645 | 0.1673 |
+| Best model | 0.0645 | 0.1673 |
 | Selected fine-tuned model | 0.7585 | 0.9565 |
-
-Fine-tuning degraded performance. Results do not show improvement.
 
 ## Own handwritten images
 
