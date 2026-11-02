@@ -26,3 +26,11 @@ Controlled fine-tuning uses `outputs/fine_tune_lr1e5/` and keeps the pretrained
 model as a validation candidate.
 
 See `ACHIEVABILITY.md` for measured results, limitations, and commands.
+
+
+
+
+HF_HOME=/tmp/dl-project-hf uv run python -c \
+  "from transformers import TrOCRProcessor, VisionEncoderDecoderModel; \
+   TrOCRProcessor.from_pretrained('microsoft/trocr-small-handwritten', extra_special_tokens={}); \
+   VisionEncoderDecoderModel.from_pretrained('microsoft/trocr-small-handwritten')"
